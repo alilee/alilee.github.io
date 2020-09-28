@@ -141,7 +141,7 @@ complete, <code>lock_api</code> aware, and valerie mostly makes use of one key p
 structure, but aren't used.</p>
 <h1 id="board-with-component-local-state">Board with component local state<a class="anchor" href="#board-with-component-local-state">§</a>&nbsp;</h1>
 <p>Valerie uses a bundle of <code>State*</code> structs which are mutable and, in turn, propagate their changes through 
-channels.</p>
+channels. These are very similar to Redux state containers.</p>
 <p>We can use generics to pass specific types through these channels. The specific types are the Model of our 
 application, playing to Rust's strength as a strongly-typed language.</p>
 <p>The game board is an array of nine squares which can be in one of a defined set of states, modelled as an 
