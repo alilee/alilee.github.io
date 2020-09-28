@@ -6,4 +6,4 @@ date = 2020-09-14
 tags = ["rust"]
 +++
 
-This is my first blog post.
+This is my first blog post. Hi.
