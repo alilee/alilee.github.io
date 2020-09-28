@@ -4,7 +4,7 @@
       <meta http-equiv="X-UA-Compatible" content="IE=edge">
       <meta http-equiv="content-type" content="text/html; charset=utf-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-      <title>  | My second post </title>     
+      <title>  | TicTacToe in Valerie </title>     
       <link rel="stylesheet" href="https://blog.shortepic.com/main.css">
     </head>
 
@@ -27,7 +27,7 @@
       <li><a href="https:&#x2F;&#x2F;blog.shortepic.com&#x2F;blog&#x2F;">Blog entries</a>&nbsp;&#8594;&nbsp;</li> 
     
   </ul>
-  <h1>My second post</h1><em></em> 
+  <h1>TicTacToe in Valerie</h1><em>Baseline implementation using today's Valerie</em> 
 
       </nav>
 
@@ -35,7 +35,7 @@
       
   <div id="taxonomies">
     
-      <date>15.09.2020</date>
+      <date>29.09.2020</date>
        
 
     
@@ -45,14 +45,272 @@
 
   
   
+    
+    
+  
+    
+    
+  
+    
+    
+  
+    
+    
+  
+    
+    
+  
+    
+    
+  
 
+  
+      <ul id="toc">
+        
+          <li><a href="https://blog.shortepic.com/blog/second/#valerie-under-the-hood">Valerie under the hood</a>
+          
+        </li>
+  
+          <li><a href="https://blog.shortepic.com/blog/second/#setting-up-a-game">Setting up a game</a>
+          
+        </li>
+  
+          <li><a href="https://blog.shortepic.com/blog/second/#board-with-component-local-state">Board with component local state</a>
+          
+        </li>
+  
+          <li><a href="https://blog.shortepic.com/blog/second/#the-turn-checker">The turn checker</a>
+          
+        </li>
+  
+          <li><a href="https://blog.shortepic.com/blog/second/#what-is-happening-here">What is happening here?</a>
+          
+        </li>
+  
+          <li><a href="https://blog.shortepic.com/blog/second/#next">Next</a>
+          
+        </li>
+  
+      </ul>
   
 
   <article>
-    <p>This is my second blog post.</p>
+    <p>This article will introduce the application model and make it work without a vDOM, using only component local state. </p>
+<p>The code for this example is here: <a href="https://github.com/emmanuelantony2000/valerie/tree/67668152ba4d8fe7f8c30aec4214f4c33d5e1486/examples/tictactoe">valerie/tree/state-feature/examples/tictactoe</a></p>
+<h1 id="valerie-under-the-hood">Valerie under the hood<a class="anchor" href="#valerie-under-the-hood">§</a>&nbsp;</h1>
+<p>Valerie defines a <code>Node</code> struct which implements a tree of references to DOM elements, augmented with the
+additional information needed for owned attributes and callbacks. </p>
+<p>The philosophy is all <code>Arc&lt;Mutex&lt;...&gt;&gt;</code> all the time which is great for threading but, I suspect, needs some 
+serious thinking and testing to ensure that there aren't latent data races waiting in hiding. This work may have 
+been done.</p>
+<p>Events are communicated using channels provided by the 
+<a href="https://crates.io/crates/futures-intrusive"><code>futures_intrusive</code> crate</a>. This crate is sophisticated and 
+complete, <code>lock_api</code> aware, and valerie mostly makes use of one key part: <code>state_broadcast_channel</code>.</p>
+<p>There is a simple DOM builder macro - no RSX yet.</p>
+<h1 id="setting-up-a-game">Setting up a game<a class="anchor" href="#setting-up-a-game">§</a>&nbsp;</h1>
+<p>This sets up the main DOM and parallel data structure and inserts it into the <code>body</code> element. </p>
 <pre style="background-color:#2b303b;">
-<code><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> highlight = </span><span style="color:#d08770;">true</span><span style="color:#c0c5ce;">;
+<code><span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">valerie</span><span style="color:#c0c5ce;">(start)]
+</span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">run</span><span style="color:#c0c5ce;">() {
+    App::render_single(</span><span style="color:#96b5b4;">game</span><span style="color:#c0c5ce;">());
+}
+
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">game</span><span style="color:#c0c5ce;">() -&gt; Node {
+    div!(
+        div!(
+            </span><span style="color:#96b5b4;">board</span><span style="color:#c0c5ce;">()
+        ).</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">game-board</span><span style="color:#c0c5ce;">&quot;),
+        div!(
+            div!(),
+            ol!()
+        ).</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">game-info</span><span style="color:#c0c5ce;">&quot;)
+    ).</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">game</span><span style="color:#c0c5ce;">&quot;).</span><span style="color:#96b5b4;">into</span><span style="color:#c0c5ce;">()
+}
 </span></code></pre>
+<p>The most important function call is to <code>board()</code> and the rest of the divs just mirror the React tutorial 
+structure, but aren't used.</p>
+<h1 id="board-with-component-local-state">Board with component local state<a class="anchor" href="#board-with-component-local-state">§</a>&nbsp;</h1>
+<p>Valerie uses a bundle of <code>State*</code> structs which are mutable and, in turn, propagate their changes through 
+channels.</p>
+<p>We can use generics to pass specific types through these channels. The specific types are the Model of our 
+application, playing to Rust's strength as a strongly-typed language.</p>
+<p>The game board is an array of nine squares which can be in one of a defined set of states, modelled as an 
+enumerated type called  <code>Square</code>.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">derive</span><span style="color:#c0c5ce;">(Copy, Clone, PartialEq)]
+</span><span style="color:#b48ead;">enum </span><span style="color:#c0c5ce;">Square {
+    Empty,
+    X,
+    O,
+}
+
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">board</span><span style="color:#c0c5ce;">() -&gt; Node {
+    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> squares: [StateAtomic&lt;Square&gt;; </span><span style="color:#d08770;">9</span><span style="color:#c0c5ce;">] = [
+        </span><span style="color:#65737e;">// Can&#39;t use array init shorthand because StateAtomic is not Copy
+        </span><span style="color:#c0c5ce;">StateAtomic::new(Square::Empty),
+        StateAtomic::new(Square::Empty),
+        StateAtomic::new(Square::Empty),
+        StateAtomic::new(Square::Empty),
+        StateAtomic::new(Square::Empty),
+        StateAtomic::new(Square::Empty),
+        StateAtomic::new(Square::Empty),
+        StateAtomic::new(Square::Empty),
+        StateAtomic::new(Square::Empty),
+    ];
+</span></code></pre>
+<p>We need some other state to manage the game - whether the game is being played or has been won, and the player 
+whose turn is next.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> status = StateAtomic::new(Status::Playing);
+    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> next_player = StateAtomic::new(Square::X);
+</span></code></pre>
+<p><code>Status</code> is another simple enum.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">derive</span><span style="color:#c0c5ce;">(Copy, Clone, PartialEq)]
+</span><span style="color:#b48ead;">enum </span><span style="color:#c0c5ce;">Status {
+    Playing,
+    Won,
+}
+</span></code></pre>
+<p>Each square will spawn an instance of an async function which will listen for clicks on the receiver end of its 
+channel. We also pass clones of the game state so that the function can control the game.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">for</span><span style="color:#c0c5ce;"> square in &amp;squares {
+        </span><span style="color:#96b5b4;">execute</span><span style="color:#c0c5ce;">(</span><span style="color:#96b5b4;">turn_checker</span><span style="color:#c0c5ce;">(squares.</span><span style="color:#96b5b4;">to_vec</span><span style="color:#c0c5ce;">(), square.</span><span style="color:#96b5b4;">rx</span><span style="color:#c0c5ce;">(), next_player.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), status.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">()));
+    }
+</span></code></pre>
+<p>The DOM for the board is straight-forward. The <code>status</code> and <code>next_player</code> can be displayed by simply 
+cloning the <code>StateAtomic</code> instance inline into the DOM. Changes through the transmitter are applied to the
+DOM element automatically. The DOM for each square is delegated to a square function.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#c0c5ce;">    div!(
+        div!(
+            status.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(),
+            next_player.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">()
+        ).</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">status</span><span style="color:#c0c5ce;">&quot;),
+        div!(
+            </span><span style="color:#96b5b4;">square</span><span style="color:#c0c5ce;">(squares[</span><span style="color:#d08770;">0</span><span style="color:#c0c5ce;">].</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), status.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), next_player.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">()),
+            </span><span style="color:#96b5b4;">square</span><span style="color:#c0c5ce;">(squares[</span><span style="color:#d08770;">1</span><span style="color:#c0c5ce;">].</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), status.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), next_player.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">()),
+            </span><span style="color:#96b5b4;">square</span><span style="color:#c0c5ce;">(squares[</span><span style="color:#d08770;">2</span><span style="color:#c0c5ce;">].</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), status.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), next_player.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">())
+        ).</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">board-row</span><span style="color:#c0c5ce;">&quot;),
+        div!(
+            </span><span style="color:#96b5b4;">square</span><span style="color:#c0c5ce;">(squares[</span><span style="color:#d08770;">3</span><span style="color:#c0c5ce;">].</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), status.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), next_player.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">()),
+            </span><span style="color:#96b5b4;">square</span><span style="color:#c0c5ce;">(squares[</span><span style="color:#d08770;">4</span><span style="color:#c0c5ce;">].</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), status.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), next_player.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">()),
+            </span><span style="color:#96b5b4;">square</span><span style="color:#c0c5ce;">(squares[</span><span style="color:#d08770;">5</span><span style="color:#c0c5ce;">].</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), status.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), next_player.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">())
+        ).</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">board-row</span><span style="color:#c0c5ce;">&quot;),
+        div!(
+            </span><span style="color:#96b5b4;">square</span><span style="color:#c0c5ce;">(squares[</span><span style="color:#d08770;">6</span><span style="color:#c0c5ce;">].</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), status.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), next_player.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">()),
+            </span><span style="color:#96b5b4;">square</span><span style="color:#c0c5ce;">(squares[</span><span style="color:#d08770;">7</span><span style="color:#c0c5ce;">].</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), status.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), next_player.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">()),
+            </span><span style="color:#96b5b4;">square</span><span style="color:#c0c5ce;">(squares[</span><span style="color:#d08770;">8</span><span style="color:#c0c5ce;">].</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), status.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">(), next_player.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">())
+        ).</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">board-row</span><span style="color:#c0c5ce;">&quot;)
+    ).</span><span style="color:#96b5b4;">into</span><span style="color:#c0c5ce;">()
+</span></code></pre>
+<p>The square is simple - each is a button of class <code>&quot;square&quot;</code>. When clicked, a closure runs which changes 
+the squares's state if the square is empty and the game is still being played. We just read the clones of the 
+<code>StateAtomics</code> with <code>value()</code>. Changing the square's state with <code>put(...)</code> will send the value to 
+the <code>StateAtomic</code> and all the cloned receivers, including the one we passed to the turn_checker.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">square</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">state</span><span style="color:#c0c5ce;">: StateAtomic&lt;Square&gt;, </span><span style="color:#bf616a;">status</span><span style="color:#c0c5ce;">: StateAtomic&lt;Status&gt;, </span><span style="color:#bf616a;">next_player</span><span style="color:#c0c5ce;">: StateAtomic&lt;Square&gt;) -&gt; Node {
+    button!(state.</span><span style="color:#96b5b4;">clone</span><span style="color:#c0c5ce;">())
+        .</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">square</span><span style="color:#c0c5ce;">&quot;)
+        .</span><span style="color:#96b5b4;">on_event</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">click</span><span style="color:#c0c5ce;">&quot;, (), </span><span style="color:#b48ead;">move </span><span style="color:#c0c5ce;">|_, _| {
+            </span><span style="color:#b48ead;">if</span><span style="color:#c0c5ce;"> status.</span><span style="color:#96b5b4;">value</span><span style="color:#c0c5ce;">() == Status::Playing &amp;&amp; state.</span><span style="color:#96b5b4;">value</span><span style="color:#c0c5ce;">() == Square::Empty {
+                state.</span><span style="color:#96b5b4;">put</span><span style="color:#c0c5ce;">(next_player.</span><span style="color:#96b5b4;">value</span><span style="color:#c0c5ce;">());
+            }
+        })
+        .</span><span style="color:#96b5b4;">into</span><span style="color:#c0c5ce;">()
+}
+</span></code></pre>
+<p>Types can be rendered into the HTML element if they implement <code>Display</code>. Since the next player is not rotated
+when we win, we just change the prompt to show the next player or who won (ok ok).</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Display </span><span style="color:#b48ead;">for </span><span style="color:#c0c5ce;">Square {
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">fmt</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">f</span><span style="color:#c0c5ce;">: &amp;</span><span style="color:#b48ead;">mut </span><span style="color:#c0c5ce;">Formatter&lt;&#39;_&gt;) -&gt; Result {
+        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> s = </span><span style="color:#b48ead;">match </span><span style="color:#bf616a;">self </span><span style="color:#c0c5ce;">{
+            Square::Empty =&gt; &quot;&quot;,
+            Square::X =&gt; &quot;</span><span style="color:#a3be8c;">X</span><span style="color:#c0c5ce;">&quot;,
+            Square::O =&gt; &quot;</span><span style="color:#a3be8c;">O</span><span style="color:#c0c5ce;">&quot;,
+        };
+        write!(f, &quot;</span><span style="color:#d08770;">{}</span><span style="color:#c0c5ce;">&quot;, s)
+    }
+}
+
+</span><span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Display </span><span style="color:#b48ead;">for </span><span style="color:#c0c5ce;">Status {
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">fmt</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">f</span><span style="color:#c0c5ce;">: &amp;</span><span style="color:#b48ead;">mut </span><span style="color:#c0c5ce;">Formatter&lt;&#39;_&gt;) -&gt; Result {
+        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> s = </span><span style="color:#b48ead;">match </span><span style="color:#bf616a;">self </span><span style="color:#c0c5ce;">{
+            Status::Playing =&gt; &quot;</span><span style="color:#a3be8c;">Next player: </span><span style="color:#c0c5ce;">&quot;,
+            Status::Won =&gt; &quot;</span><span style="color:#a3be8c;">Winner: </span><span style="color:#c0c5ce;">&quot;,
+        };
+        write!(f, &quot;</span><span style="color:#d08770;">{}</span><span style="color:#c0c5ce;">&quot;, s)
+    }
+}
+</span></code></pre>
+<p>This wraps up the DOM setup.</p>
+<h1 id="the-turn-checker">The turn checker<a class="anchor" href="#the-turn-checker">§</a>&nbsp;</h1>
+<p>This is the turn checker. It is an async function which sets up a loop to process each change to a square. 
+We check if there are any complete lines in the clone of the full board sent to the function, and either set 
+the winner, or flip the next player using rotate.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#c0c5ce;">async </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">turn_checker</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">squares</span><span style="color:#c0c5ce;">: Vec&lt;StateAtomic&lt;Square&gt;&gt;, </span><span style="color:#bf616a;">rx</span><span style="color:#c0c5ce;">: StateReceiver&lt;Channel&gt;, </span><span style="color:#bf616a;">next_player</span><span style="color:#c0c5ce;">: StateAtomic&lt;Square&gt;, </span><span style="color:#bf616a;">status</span><span style="color:#c0c5ce;">: StateAtomic&lt;Status&gt;) {
+
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">calculate_winner</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">squares</span><span style="color:#c0c5ce;">: &amp;Vec&lt;Square&gt;) -&gt; </span><span style="color:#b48ead;">bool </span><span style="color:#c0c5ce;">{
+        </span><span style="color:#b48ead;">const </span><span style="color:#d08770;">LINES</span><span style="color:#c0c5ce;">: [[</span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">; </span><span style="color:#d08770;">3</span><span style="color:#c0c5ce;">]; </span><span style="color:#d08770;">8</span><span style="color:#c0c5ce;">] = [
+            [</span><span style="color:#d08770;">0</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">1</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">2</span><span style="color:#c0c5ce;">],
+            [</span><span style="color:#d08770;">3</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">4</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">5</span><span style="color:#c0c5ce;">],
+            [</span><span style="color:#d08770;">6</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">7</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">8</span><span style="color:#c0c5ce;">],
+            [</span><span style="color:#d08770;">0</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">3</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">6</span><span style="color:#c0c5ce;">],
+            [</span><span style="color:#d08770;">1</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">4</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">7</span><span style="color:#c0c5ce;">],
+            [</span><span style="color:#d08770;">2</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">5</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">8</span><span style="color:#c0c5ce;">],
+            [</span><span style="color:#d08770;">0</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">4</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">8</span><span style="color:#c0c5ce;">],
+            [</span><span style="color:#d08770;">2</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">4</span><span style="color:#c0c5ce;">, </span><span style="color:#d08770;">6</span><span style="color:#c0c5ce;">],
+        ];
+        </span><span style="color:#b48ead;">for </span><span style="color:#c0c5ce;">[a, b, c] in &amp;</span><span style="color:#d08770;">LINES </span><span style="color:#c0c5ce;">{
+            </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> a = squares[*a];
+            </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> b = squares[*b];
+            </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> c = squares[*c];
+            </span><span style="color:#b48ead;">if</span><span style="color:#c0c5ce;"> a != Square::Empty &amp;&amp; a == b &amp;&amp; a == c {
+                </span><span style="color:#b48ead;">return </span><span style="color:#d08770;">true</span><span style="color:#c0c5ce;">;
+            }
+        }
+        </span><span style="color:#b48ead;">return </span><span style="color:#d08770;">false</span><span style="color:#c0c5ce;">;
+    }
+
+    </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> old = StateId::new();
+    </span><span style="color:#b48ead;">while let </span><span style="color:#c0c5ce;">Some((new, _)) = rx.</span><span style="color:#96b5b4;">receive</span><span style="color:#c0c5ce;">(old).await {
+        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> squares: Vec&lt;Square&gt; = squares.</span><span style="color:#96b5b4;">iter</span><span style="color:#c0c5ce;">().</span><span style="color:#96b5b4;">map</span><span style="color:#c0c5ce;">(|</span><span style="color:#bf616a;">s</span><span style="color:#c0c5ce;">| s.</span><span style="color:#96b5b4;">value</span><span style="color:#c0c5ce;">()).</span><span style="color:#96b5b4;">collect</span><span style="color:#c0c5ce;">();
+        </span><span style="color:#b48ead;">if </span><span style="color:#96b5b4;">calculate_winner</span><span style="color:#c0c5ce;">(&amp;squares) {
+            status.</span><span style="color:#96b5b4;">put</span><span style="color:#c0c5ce;">(Status::Won);
+        } </span><span style="color:#b48ead;">else </span><span style="color:#c0c5ce;">{
+            next_player.</span><span style="color:#96b5b4;">put</span><span style="color:#c0c5ce;">(next_player.</span><span style="color:#96b5b4;">value</span><span style="color:#c0c5ce;">().</span><span style="color:#96b5b4;">rotate</span><span style="color:#c0c5ce;">());
+        }
+        old = new;
+    }
+}
+
+</span><span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Square {
+    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">rotate</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) -&gt; </span><span style="color:#b48ead;">Self </span><span style="color:#c0c5ce;">{
+        </span><span style="color:#b48ead;">match </span><span style="color:#bf616a;">self </span><span style="color:#c0c5ce;">{
+            Square::X =&gt; Square::O,
+            Square::O =&gt; Square::X,
+            _ =&gt; </span><span style="color:#bf616a;">self
+        </span><span style="color:#c0c5ce;">}
+    }
+}
+</span></code></pre>
+<p>Valerie does afford us the opportunity to stratify the app according to Model/Model-View/View lines.</p>
+<h1 id="what-is-happening-here">What is happening here?<a class="anchor" href="#what-is-happening-here">§</a>&nbsp;</h1>
+<p>Each instance of <code>board()</code> is using something akin to component local state to create <code>Arc&lt;Mutex&lt;...&gt;&gt;</code> 
+objects which are owned by the main loop <code>Node</code> tree. These objects are connected by associated channel 
+end-points which can be transmitted through during DOM events. An async function can monitor receiver end-points 
+to take higher-level actions.</p>
+<p>More importantly though, we are passing around a domain model tightly-defined with Rust <code>enums</code> and 
+<code>impl</code> functions.</p>
+<p>We have moved the React tutorial away from a stringly-typed model, significantly improving reliability and
+maintainability.</p>
+<h1 id="next">Next<a class="anchor" href="#next">§</a>&nbsp;</h1>
+<p>Next we are going to look at what it might be like to lift the component-local state in <code>StateAtomic</code> up to App State,
+and start to see shared data views and the foundations of a back-end.</p>
+
   </article>
 
       </main>

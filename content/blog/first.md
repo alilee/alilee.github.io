@@ -52,3 +52,5 @@ application, and then show some code which extends the frameworks to incorporate
 state.
 
 My code will concentrate on the ergonomics of the frameworks from the perspective of the SPA-writer.
+
+Next up, I'll show an implementation of the game in Valerie.
