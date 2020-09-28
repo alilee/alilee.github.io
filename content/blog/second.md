@@ -54,7 +54,7 @@ structure, but aren't used.
 # Board with component local state
 
 Valerie uses a bundle of ```State*``` structs which are mutable and, in turn, propagate their changes through 
-channels.
+channels. These are very similar to Redux state containers.
 
 We can use generics to pass specific types through these channels. The specific types are the Model of our 
 application, playing to Rust's strength as a strongly-typed language.
