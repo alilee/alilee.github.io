@@ -4,7 +4,9 @@ date = 2020-09-29
 description = "Baseline implementation using today's Valerie"
 +++
 
-This article will introduce the application model and make it work without a vDOM, using only component local state. 
+This article will introduce the application model and make it work without a vDOM, using only component local 
+state and the [valerie](https://crates.io/crates/valerie) framework. This is the second in a series 
+[which starts here](@/blog/first.md).
 
 The code for this example is here: [valerie/tree/state-feature/examples/tictactoe](https://github.com/emmanuelantony2000/valerie/tree/67668152ba4d8fe7f8c30aec4214f4c33d5e1486/examples/tictactoe)
 
