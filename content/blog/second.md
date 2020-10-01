@@ -259,3 +259,5 @@ maintainability.
 
 Next we are going to look at what it might be like to lift the component-local state in ```StateAtomic``` up to App State,
 and start to see shared data views and the foundations of a back-end.
+
+[Take me there](@/blog/third.md).

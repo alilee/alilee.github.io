@@ -42,7 +42,7 @@ by progressively implementing a client-side tic-tac-toe game (also known as *nou
 They don't explore a back-end, routing or forms, or many of the other SPA complexities. 
 
 For us, it is just enough to highlight the potential of the two Rust frameworks above and paint 
-a picture of how these advanced extensions can be easily incorporated, and gives us a solid 
+a picture of how those advanced extensions can be easily incorporated, and gives us a solid 
 reference point from the old world.
 
 # Our approach
@@ -54,3 +54,5 @@ state.
 My code will concentrate on the ergonomics of the frameworks from the perspective of the SPA-writer.
 
 Next up, I'll show an implementation of the game in Valerie.
+
+[On to the first code sample](@/blog/second.md).

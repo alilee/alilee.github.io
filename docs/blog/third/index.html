@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <title>  | Borrowing from Fulcro for your Rust WASM SPA </title>
+    <link rel="stylesheet" href="https://blog.shortepic.com/main.css">
+    <!-- Global site tag (gtag.js) - Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=UA-179232198-1"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'UA-179232198-1');
+    </script>
+</head>
+
+<body>
+<nav>
+    <div id="subnav">
+        <form class="theme-selector">
+            <button type="button" id="theme-light-button" class="theme-button" onclick="enableTheme('light', true)">&#9706;</button>
+            <button type="button" id="theme-dark-button"  class="theme-button enabled" onclick="enableTheme('dark', true)">&#9705;</button>
+        </form>
+    </div>
+
+    
+  <ul id="breadcrumbs">
+    
+      
+      <li><a href="https:&#x2F;&#x2F;blog.shortepic.com&#x2F;">Alister Lee</a>&nbsp;&#8594;&nbsp;</li> 
+    
+      
+      <li><a href="https:&#x2F;&#x2F;blog.shortepic.com&#x2F;blog&#x2F;">Blog entries</a>&nbsp;&#8594;&nbsp;</li> 
+    
+  </ul>
+  <h1>Borrowing from Fulcro for your Rust WASM SPA</h1><em>A Fulcro-style normalised database over Valerie</em> 
+
+</nav>
+
+<main>
+    
+  <div id="taxonomies">
+    
+      <date>30.09.2020</date>
+       
+
+    
+    
+    
+  </div>
+
+  
+  
+    
+    
+  
+    
+    
+  
+    
+    
+  
+    
+    
+  
+    
+    
+  
+
+  
+      <ul id="toc">
+        
+          <li><a href="https://blog.shortepic.com/blog/third/#why-you-might-want-to-lift-state-out-of-components">Why you might want to lift state out of components</a>
+          
+        </li>
+  
+          <li><a href="https://blog.shortepic.com/blog/third/#static-scope-state-we-might-call-store">Static-scope state we might call &quot;Store&quot;</a>
+          
+        </li>
+  
+          <li><a href="https://blog.shortepic.com/blog/third/#abstracting-the-model">Abstracting the Model</a>
+          
+        </li>
+  
+          <li><a href="https://blog.shortepic.com/blog/third/#a-clean-view-without-model-implementation-noise">A clean view without model implementation noise</a>
+          
+        </li>
+  
+          <li><a href="https://blog.shortepic.com/blog/third/#do-you-believe-this-is-neater">Do you believe this is neater?</a>
+          
+        </li>
+  
+      </ul>
+  
+
+  <article>
+    <p>This article will discuss app state and show one approach to it in Rust, continuing the TicTacToe application 
+example and using the <a href="https://crates.io/crates/valerie">valerie</a> framework. This is the third in a series 
+<a href="https://blog.shortepic.com/blog/first/">which starts here</a> and continues from <a href="https://blog.shortepic.com/blog/second/">where we left off last time</a>.</p>
+<p>The code for this example is here: <a href="https://github.com/alilee/valerie/tree/cb8aa9f3de2caf3f46b0f31a2200c377086683e5/examples/tictactoe">my fork of valerie/examples/tictactoe</a>. 
+(Actually this commit is a little ahead of this article) </p>
+<h1 id="why-you-might-want-to-lift-state-out-of-components">Why you might want to lift state out of components<a class="anchor" href="#why-you-might-want-to-lift-state-out-of-components">§</a>&nbsp;</h1>
+<p><a href="http://book.fulcrologic.com">Fulcro</a> made this clear to me.</p>
+<p>When one object appears at multiple locations in a page, the information needs to be stored at a 
+top-level component and passed down (as props in React and clones of the <code>State</code> structs in valerie). This 
+couples components and their nesting, to thread the state object from where it is stored, to where it is displayed.</p>
+<p>When a deep sub-component references a piece of state, this must be known to each wrapping component.</p>
+<p>For example, a nested view of order lines needs to make a decision about how to present information about the 
+product it relates to. The order line state may know just the foreign key identifier of the product the line 
+relates to, but the user may be expecting its short code, display name and packaging dimensions. It would be 
+better if the decision about what to display could be delegated to the order line view, without asking order 
+to pass down too much (any?) product information (and then, what if we want to join to stock on hand?).</p>
+<p>Returning to our implementation of Tic Tac Toe, if our game was constructed like this:</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">game</span><span style="color:#c0c5ce;">() -&gt; Node {
+    div!(
+        div!(
+            </span><span style="color:#96b5b4;">board</span><span style="color:#c0c5ce;">(),  </span><span style="color:#65737e;">// NOTE: three boards!
+            </span><span style="color:#96b5b4;">board</span><span style="color:#c0c5ce;">(), 
+            </span><span style="color:#96b5b4;">board</span><span style="color:#c0c5ce;">(),
+        ).</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">game-board</span><span style="color:#c0c5ce;">&quot;),
+        div!(
+            div!(),
+            ol!()
+        ).</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">game-info</span><span style="color:#c0c5ce;">&quot;)
+    ).</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">game</span><span style="color:#c0c5ce;">&quot;).</span><span style="color:#96b5b4;">into</span><span style="color:#c0c5ce;">()
+}
+</span></code></pre>
+<p>we would have had three independent games proceeding in parallel. </p>
+<p>A different intention would be for each of those boards to reference the same playing state - various 
+views of the same data, remaining synchronised. Various view functions could show different perspectives 
+on the running game. We could answer questions and put that information anywhere on the page, for example: 
+how many turns done? Win possible next turn? How many doubles?</p>
+<p>(Later we will explore how to select which intention is rendered.)</p>
+<p>If we have our state completely separate from views, how would it look?</p>
+<h1 id="static-scope-state-we-might-call-store">Static-scope state we might call &quot;Store&quot;<a class="anchor" href="#static-scope-state-we-might-call-store">§</a>&nbsp;</h1>
+<p>In Rust, static-scoped items are accessible from any part of the application without being passed as 
+parameters. What if the rest of state was accessible through a lookup to static stores, using an identifier?</p>
+<p>The Store will be a generic dictionary (HashMap) which maps the identifier to a tuple of the target struct, 
+and both sides of the channel we need to link up views to the object, and take action upon events. It will
+be implemented through a trait:</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">pub trait </span><span style="color:#c0c5ce;">Relation&lt;K: Copy + Eq + Hash, V: Clone + Default + Send&gt; {
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">get</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">id</span><span style="color:#c0c5ce;">: K) -&gt; V;
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">insert</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">id</span><span style="color:#c0c5ce;">: K, </span><span style="color:#bf616a;">value</span><span style="color:#c0c5ce;">: V);
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">mutate</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">id</span><span style="color:#c0c5ce;">: K, </span><span style="color:#bf616a;">m</span><span style="color:#c0c5ce;">: &amp;impl Mutator&lt;V&gt;);
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">subscribe</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">id</span><span style="color:#c0c5ce;">: K) -&gt; StateReceiver&lt;V&gt;;
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">notify</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">id</span><span style="color:#c0c5ce;">: K);
+}
+</span></code></pre>
+<p>Implementing <code>Relation&lt;K, V&gt;</code> for <code>V</code> means that associated functions of <code>V</code> can be used to interact
+with uniquely identified instances of V - from anywhere in the DOM.</p>
+<p>Mutations are a helper type that represent updates/changes to the struct as their own distinct struct. Even though 
+it seems like unnecessary complexity, let this ride for a moment because it will become very useful when we want 
+to pass those mutations to a remote back-end API, over the network.</p>
+<p>Mutations just need to know how to apply themselves to their target type, producing a modified instance:</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">trait </span><span style="color:#c0c5ce;">Mutator&lt;V&gt; {
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">mutate</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">v</span><span style="color:#c0c5ce;">: &amp;V) -&gt; V;
+}
+</span></code></pre>
+<p>An illustrative example of implementing <code>Relation</code>:</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">PostID(</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">);
+
+</span><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">Post {
+    </span><span style="color:#bf616a;">id</span><span style="color:#c0c5ce;">: PostID,
+    </span><span style="color:#bf616a;">body</span><span style="color:#c0c5ce;">: String,
+    </span><span style="color:#bf616a;">author</span><span style="color:#c0c5ce;">: String,
+}
+
+</span><span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Relation&lt;PostID, Post&gt; </span><span style="color:#b48ead;">for </span><span style="color:#c0c5ce;">Post {
+    </span><span style="color:#65737e;">// we need this impl to be easy...
+</span><span style="color:#c0c5ce;">}
+
+</span><span style="color:#65737e;">// usage example:
+</span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> post = Post { 
+    id: PostID(</span><span style="color:#d08770;">34</span><span style="color:#c0c5ce;">), 
+    body, 
+    author, 
+};
+Post::insert(post.id, post);
+</span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> post = Post::get(PostID(</span><span style="color:#d08770;">34</span><span style="color:#c0c5ce;">));
+</span></code></pre>
+<p>The branch in valerie (linked above), provides a macro implementation for such a dictionary (implemented using 
+a HashMap). Let's have a look what that means for the TicTacToe code.</p>
+<h1 id="abstracting-the-model">Abstracting the Model<a class="anchor" href="#abstracting-the-model">§</a>&nbsp;</h1>
+<p>Firstly, we can abstract the Model. We can use some very simple and explicit structs.</p>
+<p>A square is marked either empty, X or O, and starts out empty.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">enum </span><span style="color:#c0c5ce;">SquareMark {
+    Empty,
+    X,
+    O,
+}
+
+</span><span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Default </span><span style="color:#b48ead;">for </span><span style="color:#c0c5ce;">SquareMark {
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">default</span><span style="color:#c0c5ce;">() -&gt; </span><span style="color:#b48ead;">Self </span><span style="color:#c0c5ce;">{
+        </span><span style="color:#b48ead;">Self</span><span style="color:#c0c5ce;">::Empty
+    }
+}
+</span></code></pre>
+<p>We also use the mark to track which player is next (okok), so it needs a mutation which sets the starting player
+and changes between players.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">enum </span><span style="color:#c0c5ce;">NextPlayerChange {
+    Start,
+    Next,
+}
+
+</span><span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Mutator&lt;SquareMark&gt; </span><span style="color:#b48ead;">for </span><span style="color:#c0c5ce;">NextPlayerChange {
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">mutate</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">v</span><span style="color:#c0c5ce;">: &amp;SquareMark) -&gt; SquareMark {
+        </span><span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">SquareMark::*;
+        </span><span style="color:#b48ead;">match </span><span style="color:#bf616a;">self </span><span style="color:#c0c5ce;">{
+            </span><span style="color:#b48ead;">Self</span><span style="color:#c0c5ce;">::Start =&gt; X,
+            </span><span style="color:#b48ead;">Self</span><span style="color:#c0c5ce;">::Next =&gt; </span><span style="color:#b48ead;">match</span><span style="color:#c0c5ce;"> v {
+                X =&gt; O,
+                O =&gt; X,
+                Empty =&gt; unreachable!(),
+            },
+        }
+    }
+}
+</span></code></pre>
+<p>A square is state, indexable within the board. We set up some defaults so they start Empty, but I've omitted 
+this code.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">SquareID(</span><span style="color:#b48ead;">u8</span><span style="color:#c0c5ce;">);
+
+</span><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">Square {
+    </span><span style="color:#bf616a;">id</span><span style="color:#c0c5ce;">: SquareID,
+    </span><span style="color:#b48ead;">pub </span><span style="color:#bf616a;">mark</span><span style="color:#c0c5ce;">: SquareMark,
+}
+</span></code></pre>
+<p>Squares change when they are clicked, but the change depends on the player, so that is a parameter of the mutator.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">enum </span><span style="color:#c0c5ce;">SquareChange {
+    Mark(SquareMark),
+}
+
+</span><span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Mutator&lt;Arc&lt;Square&gt;&gt; </span><span style="color:#b48ead;">for </span><span style="color:#c0c5ce;">SquareChange {
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">mutate</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">v</span><span style="color:#c0c5ce;">: &amp;Arc&lt;Square&gt;) -&gt; Arc&lt;Square&gt; {
+        </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> v: Square = Square::clone(v);
+        </span><span style="color:#b48ead;">match </span><span style="color:#bf616a;">self </span><span style="color:#c0c5ce;">{
+            </span><span style="color:#b48ead;">Self</span><span style="color:#c0c5ce;">::Mark(mark) =&gt; v.mark = *mark,
+        }
+        Arc::new(v)
+    }
+}
+</span></code></pre>
+<p>You will notice that we are mutating <code>Arc&lt;Square&gt;</code>, not <code>Square</code>. We pass data around a lot through channels,
+so our types need to be <code>Clone</code>.</p>
+<p>The board is interesting. Instead of an array of marks, we have an array of identifiers. The Squares themselves 
+are managed by their own relation, so we reference into that. Board no longer knows what constitutes a Square.</p>
+<p>The default board sets up references to nine new squares, which in turn, default to Empty. We also factor out 
+our game logic for determining if the board contains any lines of three identical non-Empty marks.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">Board {
+    </span><span style="color:#b48ead;">pub </span><span style="color:#bf616a;">squares</span><span style="color:#c0c5ce;">: [SquareID; 9],
+}
+
+</span><span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Default </span><span style="color:#b48ead;">for </span><span style="color:#c0c5ce;">Board {
+    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">default</span><span style="color:#c0c5ce;">() -&gt; </span><span style="color:#b48ead;">Self </span><span style="color:#c0c5ce;">{
+        </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> squares = [SquareID(</span><span style="color:#d08770;">0</span><span style="color:#c0c5ce;">); </span><span style="color:#d08770;">9</span><span style="color:#c0c5ce;">];
+        </span><span style="color:#b48ead;">for</span><span style="color:#c0c5ce;"> i in </span><span style="color:#d08770;">0</span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">..</span><span style="color:#d08770;">9 </span><span style="color:#c0c5ce;">{
+            </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> square = Square::new(SquareID(i as </span><span style="color:#b48ead;">u8</span><span style="color:#c0c5ce;">));
+            Square::new(square.id);
+            squares[i] = square.id;
+        }
+        </span><span style="color:#b48ead;">Self </span><span style="color:#c0c5ce;">{ squares }
+    }
+}
+
+</span><span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Board {
+    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">calculate_winner</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) -&gt; </span><span style="color:#b48ead;">bool </span><span style="color:#c0c5ce;">{
+        </span><span style="color:#65737e;">// ...
+    </span><span style="color:#c0c5ce;">}
+}
+</span></code></pre>
+<p>Game status has a very similar implementation to Square, and the mutator is the simplest setter, so not shown here.</p>
+<p>Hopefully at this point you agree we have a model for playing a game of tictactoe, which is very much decoupled from 
+the view.</p>
+<p>I have not shown the implementations of the <code>trait Relation</code> yet. The code branch has two macros which implement 
+the associated functions using a HashMap. All that is required to set up the Stores is:</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#65737e;">// Square::get(SquareID) -&gt; Arc&lt;Square&gt;
+</span><span style="color:#c0c5ce;">relation!(Square, SquareID, Arc&lt;Square&gt;);
+
+</span><span style="color:#65737e;">// GameBoard::get() -&gt; Arc&lt;Board&gt;
+</span><span style="color:#c0c5ce;">singleton!(GameBoard, Arc&lt;Board&gt;);
+singleton!(GameStatus, Status);
+singleton!(NextPlayer, SquareMark);
+</span></code></pre>
+<p><code>singleton!</code> is very similar to <code>relation!</code> and sets up reactive state which is not indexed by an identifier.</p>
+<p>We can represent our game state! What does it do for our view?</p>
+<h1 id="a-clean-view-without-model-implementation-noise">A clean view without model implementation noise<a class="anchor" href="#a-clean-view-without-model-implementation-noise">§</a>&nbsp;</h1>
+<p>It's time to get paid. But first, there is one part of the <code>trait Relation</code> I hid from you. <code>formatted</code> 
+will take the instance and pass the changed object from the receiver channel to a closure which generates the 
+<code>Node</code> text, which is inserted as the update.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">game</span><span style="color:#c0c5ce;">() -&gt; Node {
+    NextPlayer::mutate(NextPlayerChange::Start);
+    </span><span style="color:#96b5b4;">execute</span><span style="color:#c0c5ce;">(GameBoard::turn_checker());
+    div!(div!(
+        div!(
+            GameStatus::formatted(</span><span style="color:#b48ead;">move </span><span style="color:#c0c5ce;">|s| {
+                </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> s = </span><span style="color:#b48ead;">match</span><span style="color:#c0c5ce;"> s {
+                    Status::Playing =&gt; &quot;</span><span style="color:#a3be8c;">Next player: </span><span style="color:#c0c5ce;">&quot;,
+                    Status::Won =&gt; &quot;</span><span style="color:#a3be8c;">Winner: </span><span style="color:#c0c5ce;">&quot;,
+                };
+                format!(&quot;</span><span style="color:#d08770;">{}</span><span style="color:#c0c5ce;">&quot;, s)
+            }),
+            NextPlayer::formatted(</span><span style="color:#b48ead;">move </span><span style="color:#c0c5ce;">|p| {
+                format!(&quot;</span><span style="color:#d08770;">{}</span><span style="color:#c0c5ce;">&quot;, p)
+            })
+        )
+        .</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">status</span><span style="color:#c0c5ce;">&quot;),
+        GameBoard::node()
+    )
+    .</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">game-board</span><span style="color:#c0c5ce;">&quot;))
+    .</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">game</span><span style="color:#c0c5ce;">&quot;)
+    .</span><span style="color:#96b5b4;">into</span><span style="color:#c0c5ce;">()
+}
+</span></code></pre>
+<p><code>NextPlayer</code> needed to be mutated because it is a singleton <code>SquareMark</code> and they default to 
+Empty, remember?</p>
+<p><code>game()</code> executes an event-triggered function turn-checker, which we'll return to in a moment.</p>
+<p>The game status is used to generate the label text, and the next player is used to display the mark of the next 
+player. Finally, we insert the board as a node, which is a function we need to write, and we do it by re-opening 
+the struct. It just loops through the squares in rows of three, and inserts three of the nodes created by 
+<code>square()</code>.</p>
+<p>Notice that we are only passing the identifier of the square.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">GameBoard {
+    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">node</span><span style="color:#c0c5ce;">() -&gt; Node {
+        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> board = </span><span style="color:#b48ead;">Self</span><span style="color:#c0c5ce;">::get();
+        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> board = &amp;board.squares;
+        </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> parent = div!();
+        </span><span style="color:#b48ead;">for</span><span style="color:#c0c5ce;"> row in board.</span><span style="color:#96b5b4;">chunks</span><span style="color:#c0c5ce;">(</span><span style="color:#d08770;">3</span><span style="color:#c0c5ce;">) {
+            </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> row_div: Tag&lt;html::elements::Div&gt; = div!().</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">board-row</span><span style="color:#c0c5ce;">&quot;);
+            </span><span style="color:#b48ead;">for</span><span style="color:#c0c5ce;"> id in row {
+                row_div = row_div.</span><span style="color:#96b5b4;">push</span><span style="color:#c0c5ce;">(</span><span style="color:#96b5b4;">square</span><span style="color:#c0c5ce;">(*id));
+            }
+            parent = parent.</span><span style="color:#96b5b4;">push</span><span style="color:#c0c5ce;">(row_div);
+        }
+        parent.</span><span style="color:#96b5b4;">into</span><span style="color:#c0c5ce;">()
+    }
+
+    </span><span style="color:#b48ead;">pub</span><span style="color:#c0c5ce;"> async </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">turn_checker</span><span style="color:#c0c5ce;">() {
+        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> rx = </span><span style="color:#b48ead;">Self</span><span style="color:#c0c5ce;">::subscribe();
+        </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> old = StateId::new();
+        </span><span style="color:#b48ead;">while let </span><span style="color:#c0c5ce;">Some((new, _)) = rx.</span><span style="color:#96b5b4;">receive</span><span style="color:#c0c5ce;">(old).await {
+            </span><span style="color:#b48ead;">if </span><span style="color:#c0c5ce;">GameBoard::get().</span><span style="color:#96b5b4;">calculate_winner</span><span style="color:#c0c5ce;">() {
+                GameStatus::mutate(StatusChange::Won);
+            } </span><span style="color:#b48ead;">else </span><span style="color:#c0c5ce;">{
+                NextPlayer::mutate(NextPlayerChange::Next);
+            }
+            old = new;
+        }
+    }
+}
+</span></code></pre>
+<p>The turn-checker grabs a receiver for the GameBoard and waits for events. When an event arrives, it uses the model 
+to check if we have a winner, and either ends the game, or flips the player, using the relevant mutators. The 
+mutators for those stores push those changes down the channels so that the DOM is updated everywhere that is 
+listening on related receivers.</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">square</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">id</span><span style="color:#c0c5ce;">: SquareID) -&gt; Node {
+    button!(Square::formatted(id, |</span><span style="color:#bf616a;">s</span><span style="color:#c0c5ce;">| {
+        format!(&quot;</span><span style="color:#d08770;">{}</span><span style="color:#c0c5ce;">&quot;, s.mark)
+    }))
+    .</span><span style="color:#96b5b4;">class</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">square</span><span style="color:#c0c5ce;">&quot;)
+    .</span><span style="color:#96b5b4;">on_event</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">click</span><span style="color:#c0c5ce;">&quot;, (), </span><span style="color:#b48ead;">move </span><span style="color:#c0c5ce;">|_, _| {
+        </span><span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">SquareMark::Empty;
+        </span><span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">Status::Playing;
+
+        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> status = GameStatus::get();
+        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> current = Square::get(id).mark;
+        </span><span style="color:#b48ead;">if</span><span style="color:#c0c5ce;"> status == Playing &amp;&amp; current == Empty {
+            Square::mutate(id, &amp;SquareChange::Mark(NextPlayer::get()));
+            GameBoard::notify();
+        }
+    })
+    .</span><span style="color:#96b5b4;">into</span><span style="color:#c0c5ce;">()
+}
+</span></code></pre>
+<p>The <code>square()</code> function generates the buttons and sets up the event. It has a bit of logic around whether to 
+accept the click, but if so, then it mutates the square to the current player's mark, and notifies the 
+<code>GameBoard</code>. This triggers the turn-checker, which was looping, listening on the GameBoard's receiver.</p>
+<p>Satisfy yourself now that if we put:</p>
+<pre style="background-color:#2b303b;">
+<code><span style="color:#c0c5ce;">    GameBoard::node(),
+    GameBoard::node(),
+    GameBoard::node()
+</span></code></pre>
+<p>into <code>game()</code>, we will see three boards that are playing the same game. All three would run turn-checkers 
+(which would be weird) but they will render the same square state from the static GameBoard singleton and Square 
+relation.</p>
+<h1 id="do-you-believe-this-is-neater">Do you believe this is neater?<a class="anchor" href="#do-you-believe-this-is-neater">§</a>&nbsp;</h1>
+<p>We have done a lot of work to really separate the model and the view, and the views from each other. This is not 
+quite enough return for what we have invested yet, but we have laid critical groundwork for very powerful back-end
+integration.</p>
+<p>Next article, I'll explore some simple extensions to <code>trait Relation</code> that will let us fetch objects 
+from a remote back-end, render them as <em>loading...</em> until they arrive, make local changes speculatively, and 
+confirm them (or error) when the fetch returns to us with the server's outcome.</p>
+
+  </article>
+
+</main>
+
+<script type="text/javascript" src="https://blog.shortepic.com/themes.js"></script>
+
+<script>
+function burger() {
+    var x = document.getElementById("bger");
+    if (x.style.display === "block") {
+        x.style.display = "none";
+    } else {
+        x.style.display = "block";
+    }
+}
+</script>
+</body>
+</html>
